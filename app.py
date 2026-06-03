@@ -49,6 +49,7 @@ elif page == "Прогноз":
 
     @st.cache_resource
     def load_models():
+        import joblib
         models = {}
         # Загрузка классики
         models['Poly'] = joblib.load('models/model_ml1.pkl')
@@ -57,12 +58,11 @@ elif page == "Прогноз":
         models['Bagging'] = joblib.load('models/model_ml4.pkl')
         models['Stacking'] = joblib.load('models/model_ml5.pkl')
         
-        # Безопасная загрузка нейросети (h5 формат)
         try:
-            from keras.models import load_model
-            models['NeuralNet'] = load_model('models/model_ml6.h5')
+            import onnxruntime as ort
+            models['NeuralNet'] = ort.InferenceSession('models/model_ml6.onnx')
         except Exception as e:
-            st.error(f"Нейросеть не загружена: {e}")
+            st.error(f"Ошибка загрузки нейросети (ONNX): {e}")
             models['NeuralNet'] = None
         return models
 
@@ -113,7 +113,13 @@ elif page == "Прогноз":
             st.write(f"**Stacking:** {models['Stacking'].predict(input_data)[0]:,.2f} $")
             
             if models['NeuralNet'] is not None:
-                nn_pred = models['NeuralNet'].predict(input_data)
+                import numpy as np
+                # Получаем имя входного слоя нейросети
+                input_name = models['NeuralNet'].get_inputs()[0].name
+                # Конвертируем данные в float32 (требование ONNX)
+                input_array = input_data.values.astype(np.float32)
+                # Делаем предсказание
+                nn_pred = models['NeuralNet'].run(None, {input_name: input_array})[0]
                 st.write(f"**Нейронная сеть:** {float(nn_pred[0][0]):,.2f} $")
     else:
         st.error("Папка 'models' не найдена.")
