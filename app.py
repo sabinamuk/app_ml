@@ -6,6 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import seaborn as sns
 
+import os
+import subprocess
+
+if not os.path.exists('models/linear.pkl'):
+    st.warning("Модели не найдены. Запускаю процесс обучения...")
+    subprocess.run(['python', 'train_models.py'], check=True)
+    st.success("Обучение завершено!")
+
 
 @st.cache_resource
 def load_assets():
