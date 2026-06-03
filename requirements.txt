@@ -1,6 +1,9 @@
-﻿streamlit
+streamlit
 pandas
-scikit-learn
+scikit-learn==1.8.0
 lightgbm
 joblib
-tensorflow==2.15.0
+matplotlib
+seaborn
+h5py
+keras
