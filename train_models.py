@@ -7,6 +7,15 @@ from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.ensemble import GradientBoostingRegressor, BaggingRegressor, StackingRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 import tensorflow as tf
+import os
+import pandas as pd
+
+# Добавьте этот блок в начало train_models.py
+if os.getenv('STREAMLIT_SERVER_PORT'): # Проверка, что мы в облаке
+    # Читаем только первые 500-1000 строк для быстрой проверки
+    df = pd.read_csv('data_new.csv', encoding='cp1251', nrows=1000) 
+else:
+    df = pd.read_csv('data_new.csv', encoding='cp1251')
 
 df = pd.read_csv('data_new.csv')
 X = df.drop('price', axis=1)
