@@ -1,8 +1,7 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
-import pickle
+import joblib
 import lightgbm as lgb
-import tensorflow as tf
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,7 +16,8 @@ if page == "Разработчик":
     st.write("**ФИО:** Муканова Сабина Толегеновна")
     st.write("**Группа:** ФИТ-242")
     st.write("**Тема РГР:** Дашборд предсказания стоимости недвижимости")
-    st.image("photo.jpg", width=200) 
+    if os.path.exists("photo.jpg"):
+        st.image("photo.jpg", width=200)
 
 # 2. Страница: Описание данных
 elif page == "Описание данных":
@@ -31,39 +31,45 @@ elif page == "Описание данных":
     
     **Предобработка:** Из набора были исключены ID сделки и дата продажи, так как они не влияют на рыночную стоимость.
     """)
-
 # 3. Страница: Визуализация
 elif page == "Визуализация":
     st.title("Анализ данных (EDA)")
-    df = pd.read_csv('data_new.csv', encoding='cp1251')
-    
-    fig1, ax1 = plt.subplots(); sns.histplot(df['price'], ax=ax1); st.pyplot(fig1)
-    fig2, ax2 = plt.subplots(); sns.scatterplot(data=df, x='sqft_living', y='price', ax=ax2); st.pyplot(fig2)
-    fig3, ax3 = plt.subplots(); sns.boxplot(data=df, x='bedrooms', y='price', ax=ax3); st.pyplot(fig3)
-    fig4, ax4 = plt.subplots(); sns.heatmap(df.corr(), annot=False, ax=ax4); st.pyplot(fig4)
+    if os.path.exists('data_new.csv'):
+        df = pd.read_csv('data_new.csv', encoding='cp1251')
+        fig1, ax1 = plt.subplots(); sns.histplot(df['price'], ax=ax1); st.pyplot(fig1)
+        fig2, ax2 = plt.subplots(); sns.scatterplot(data=df, x='sqft_living', y='price', ax=ax2); st.pyplot(fig2)
+        fig3, ax3 = plt.subplots(); sns.boxplot(data=df, x='bedrooms', y='price', ax=ax3); st.pyplot(fig3)
+        fig4, ax4 = plt.subplots(); sns.heatmap(df.corr(), annot=False, ax=ax4); st.pyplot(fig4)
+    else:
+        st.error("Файл данных не найден.")
 
 # 4. Страница: Прогноз
 elif page == "Прогноз":
     st.title("Дашборд предсказания цены на недвижимость")
 
-    # Загрузка моделей
     @st.cache_resource
     def load_models():
         models = {}
-        with open('models/model_ml1.pkl', 'rb') as f: models['Poly'] = pickle.load(f)
-        with open('models/model_ml2.pkl', 'rb') as f: models['GB'] = pickle.load(f)
+        # Загрузка классики
+        models['Poly'] = joblib.load('models/model_ml1.pkl')
+        models['GB'] = joblib.load('models/model_ml2.pkl')
         models['LGBM'] = lgb.Booster(model_file='models/model_ml3.txt')
-        with open('models/model_ml4.pkl', 'rb') as f: models['Bagging'] = pickle.load(f)
-        with open('models/model_ml5.pkl', 'rb') as f: models['Stacking'] = pickle.load(f)
-        models['NeuralNet'] = tf.keras.models.load_model('models/model_ml6.keras')
+        models['Bagging'] = joblib.load('models/model_ml4.pkl')
+        models['Stacking'] = joblib.load('models/model_ml5.pkl')
+        
+        # Безопасная загрузка нейросети (h5 формат)
+        try:
+            from keras.models import load_model
+            models['NeuralNet'] = load_model('models/model_ml6.h5')
+        except Exception as e:
+            st.error(f"Нейросеть не загружена: {e}")
+            models['NeuralNet'] = None
         return models
 
     if os.path.exists('models'):
         models = load_models() 
         
-        #Страница прогноза
         st.header("Введите параметры дома")
-
         with st.form("prediction_form"):
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -73,7 +79,6 @@ elif page == "Прогноз":
                 sqft_lot = st.number_input("Площадь участка", value=5000)
                 floors = st.number_input("Этажи", value=1)
                 waterfront = st.selectbox("Набережная (0/1)", [0, 1])
-
             with col2:
                 view = st.slider("Вид (0-4)", 0, 4, 0)
                 condition = st.slider("Состояние (1-5)", 1, 5, 3)
@@ -81,7 +86,6 @@ elif page == "Прогноз":
                 sqft_above = st.number_input("Площадь над землей", value=1500)
                 sqft_basement = st.number_input("Площадь подвала", value=500)
                 zipcode = st.number_input("Индекс (zipcode)", value=98000)
-
             with col3:
                 lat = st.number_input("Широта (lat)", value=47.5, format="%.4f")
                 long = st.number_input("Долгота (long)", value=-122.0, format="%.4f")
@@ -90,19 +94,16 @@ elif page == "Прогноз":
                 year_sale = st.number_input("Год продажи", value=2024)
                 age = st.number_input("Возраст дома", value=20)
                 age_renovated = st.number_input("Возраст после ремонта", value=0)
-
+            
             submitted = st.form_submit_button("Рассчитать стоимость")
 
         if submitted:
-            input_data = pd.DataFrame([[
-                bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, 
-                condition, grade, sqft_above, sqft_basement, zipcode, lat, long, 
-                sqft_living15, sqft_lot15, year_sale, age, age_renovated
-            ]], columns=[
-                'bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 
-                'view', 'condition', 'grade', 'sqft_above', 'sqft_basement', 'zipcode', 
-                'lat', 'long', 'sqft_living15', 'sqft_lot15', 'year_sale', 'age', 'age_renovated'
-            ])
+            input_data = pd.DataFrame([[bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, 
+                                        condition, grade, sqft_above, sqft_basement, zipcode, lat, long, 
+                                        sqft_living15, sqft_lot15, year_sale, age, age_renovated]],
+                                        columns=['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 
+                                                'view', 'condition', 'grade', 'sqft_above', 'sqft_basement', 'zipcode', 
+                                                'lat', 'long', 'sqft_living15', 'sqft_lot15', 'year_sale', 'age', 'age_renovated'])
             
             st.subheader("Результаты предсказаний:")
             st.write(f"**Полиномиальная регрессия:** {models['Poly'].predict(input_data)[0]:,.2f} $")
@@ -110,7 +111,9 @@ elif page == "Прогноз":
             st.write(f"**LightGBM:** {models['LGBM'].predict(input_data)[0]:,.2f} $")
             st.write(f"**Bagging:** {models['Bagging'].predict(input_data)[0]:,.2f} $")
             st.write(f"**Stacking:** {models['Stacking'].predict(input_data)[0]:,.2f} $")
-            nn_pred = models['NeuralNet'].predict(input_data)
-            st.write(f"**Нейронная сеть:** {float(nn_pred[0][0]):,.2f} $")
+            
+            if models['NeuralNet'] is not None:
+                nn_pred = models['NeuralNet'].predict(input_data)
+                st.write(f"**Нейронная сеть:** {float(nn_pred[0][0]):,.2f} $")
     else:
         st.error("Папка 'models' не найдена.")
