@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import subprocess
+import sys
 
 # 1. Безопасный импорт TensorFlow
 try:
@@ -14,23 +15,24 @@ try:
 except ImportError:
     TF_AVAILABLE = False
 
-# Запуск обучения, если моделей нет
+# Запуск обучения (исправлено: только один блок вызова)
 if not os.path.exists('models/linear.pkl'):
-    st.warning("Модели не найдены. Запускаю процесс обучения...")
-    result = subprocess.run(['python', 'train_models.py'], capture_output=True, text=True)
+    st.warning("Модели не найдены. Запускаю процесс обучения (это займет время)...")
+    
+    # Используем sys.executable для запуска в той же среде, где работает Streamlit
+    python_path = sys.executable 
+    result = subprocess.run([python_path, 'train_models.py'], capture_output=True, text=True)
+    
     if result.returncode != 0:
         st.error("Ошибка при обучении моделей:")
-        st.code(result.stderr) # Здесь мы увидим, что именно сломалось!
-        st.stop() # Останавливаем выполнение, чтобы не идти дальше
+        st.code(result.stderr)
+        st.stop()
     else:
         st.success("Обучение завершено!")
-    subprocess.run(['python', 'train_models.py'], check=True)
-    st.success("Обучение завершено!")
-    st.rerun()
+        st.rerun()
 
 @st.cache_resource
 def load_assets():
-    
     models = {}
     model_names = ["linear", "rf", "gb", "bagging", "stacking"]
     for name in model_names:
