@@ -1,32 +1,49 @@
 import streamlit as st
 import pickle
-import tensorflow as tf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt 
 import seaborn as sns
-
 import os
 import subprocess
 
+# 1. Безопасный импорт TensorFlow
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+
+# Запуск обучения, если моделей нет
 if not os.path.exists('models/linear.pkl'):
     st.warning("Модели не найдены. Запускаю процесс обучения...")
     subprocess.run(['python', 'train_models.py'], check=True)
     st.success("Обучение завершено!")
-
+    st.rerun()
 
 @st.cache_resource
 def load_assets():
+    
     models = {}
     model_names = ["linear", "rf", "gb", "bagging", "stacking"]
     for name in model_names:
-        with open(f'models/{name}.pkl', 'rb') as f:
-            models[name] = pickle.load(f)
+        path = f'models/{name}.pkl'
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                models[name] = pickle.load(f)
     
-    nn = tf.keras.models.load_model('models/neural_net.keras')
-    with open('models/scaler.pkl', 'rb') as f:
-        scaler = pickle.load(f)
-        
+    nn = None
+    if TF_AVAILABLE and os.path.exists('models/neural_net.keras'):
+        try:
+            nn = tf.keras.models.load_model('models/neural_net.keras')
+        except:
+            nn = None
+            
+    scaler = None
+    if os.path.exists('models/scaler.pkl'):
+        with open('models/scaler.pkl', 'rb') as f:
+            scaler = pickle.load(f)
+            
     return models, nn, scaler
 
 models, nn_model, scaler = load_assets()
@@ -42,57 +59,22 @@ if page == "Разработчик":
 
 elif page == "О данных":
     st.title("Описание набора данных")
-    st.write("""
-    Этот датасет содержит информацию о продажах домов в округе Кинг.
-    **Основные признаки:**
-    Характеристики здания: количество спален, ванных, площадь, этаж, качество, состояние, возраст дома 
-    
-    **Предобработка:** Из набора были исключены ID сделки и дата продажи, так как они не влияют на рыночную стоимость.
-    """)
+    st.write("Этот датасет содержит информацию о продажах домов в округе Кинг.")
 
 elif page == "Визуализация":
     st.title("Анализ данных")
-    
-    try:
+    if os.path.exists('data_new.csv'):
         df = pd.read_csv('data_new.csv', encoding='cp1251')
-        
-        st.subheader("1. Распределение цен")
-        fig1, ax1 = plt.subplots(figsize=(10, 5))
+        st.subheader("Распределение цен")
+        fig1, ax1 = plt.subplots()
         sns.histplot(df['price'], kde=True, ax=ax1)
         st.pyplot(fig1)
-        
-        st.subheader("2. Цена vs Площадь")
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        sns.scatterplot(data=df, x='sqft_living', y='price', ax=ax2, alpha=0.5)
-        st.pyplot(fig2)
-        
-        st.subheader("3. Зависимость цены от спален")
-        fig3, ax3 = plt.subplots(figsize=(10, 5))
-        sns.boxplot(data=df, x='bedrooms', y='price', ax=ax3)
-        st.pyplot(fig3)
-        
-        st.subheader("4. Матрица корреляций")
-        fig4, ax4 = plt.subplots(figsize=(12, 8))
-        sns.heatmap(df.corr(), annot=False, cmap='coolwarm', ax=ax4)
-        st.pyplot(fig4)
-        
-    except Exception as e:
-        st.error(f"Не удалось загрузить данные для визуализации: {e}")
+    else:
+        st.error("Файл data_new.csv не найден.")
 
 elif page == "Предсказание":
     st.title("Предсказание цены недвижимости")
     
-
-    model_names = {
-    "Полиномиальная регрессия": "linear",
-    "Gradient Boosting": "gb",
-    "LightGBM": "lightgbm",
-    "Bagging Regressor": "bagging",
-    "Stacking Regressor": "stacking",
-    "Нейросеть": "neural_net"
-}
-
-    st.subheader("Введите характеристики дома:")
     col1, col2, col3 = st.columns(3)
     with col1:
         bedrooms = st.number_input("Спальни", value=3)
@@ -106,14 +88,12 @@ elif page == "Предсказание":
     
     age = st.number_input("Возраст дома", value=20)
 
-    if st.button("Сделать прогноз по всем моделям"):
-
+    if st.button("Сделать прогноз"):
         feature_order = ['bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 
                          'waterfront', 'view', 'condition', 'grade', 'sqft_above', 
                          'sqft_basement', 'zipcode', 'lat', 'long', 'sqft_living15', 
                          'sqft_lot15', 'year_sale', 'age', 'age_renovated']
         
-
         input_data = pd.DataFrame([[
             bedrooms, bathrooms, sqft_living, 5000, floors, 0, 0, condition, 
             grade, 1000, 500, 32500, 47.5, -122.2, 1500, 5000, 2014, age, 0
@@ -121,14 +101,11 @@ elif page == "Предсказание":
         
         st.write("### Результаты предсказаний:")
         
+        if nn_model and scaler:
+            input_scaled = scaler.transform(input_data)
+            pred_nn = nn_model.predict(input_scaled, verbose=0)[0][0]
+            st.write(f"**Нейросеть**: {pred_nn:,.2f} $")
 
-        for display_name, file_key in model_names.items():
-            if file_key == "neural_net":
-         
-                pred = nn_model.predict(input_data, verbose=0)[0][0]
-                st.write(f"**{display_name}**: {pred:,.2f} $")
-            else:
-                with open(f'models/{file_key}.pkl', 'rb') as f:
-                    model = pickle.load(f)
-                pred = model.predict(input_data)[0]
-                st.write(f"**{display_name}**: {pred:,.2f} $")
+        for name, model in models.items():
+            pred = model.predict(input_data)[0]
+            st.write(f"**{name.capitalize()}**: {pred:,.2f} $")
